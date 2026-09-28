@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2021 - 2022 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2021 - 2026 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
@@ -20,6 +20,15 @@ T.Button {
     leftPadding: DS.Style.button.hPadding
     rightPadding: DS.Style.button.hPadding
     spacing: DS.Style.control.spacing
+    // Reserve 1px on each side for the outside border so it is never clipped
+    // by a parent with clip:true (e.g. ListView). Checked buttons share
+    // the same 1px insets as normal buttons so their implicitHeight
+    // stays identical and toggling checked state does not cause layout
+    // shift. Highlighted buttons have no outside border, so 0 insets.
+    leftInset: highlighted ? 0 : 1
+    rightInset: highlighted ? 0 : 1
+    topInset: highlighted ? 0 : 1
+    bottomInset: highlighted ? 0 : 1
     opacity: D.ColorSelector.controlState === D.DTK.DisabledState ? 0.4 : 1
     D.DciIcon.mode: D.ColorSelector.controlState
     D.DciIcon.theme: D.ColorSelector.controlTheme
@@ -32,9 +41,55 @@ T.Button {
     }
 
     background: P.ButtonPanel {
+        id: buttonPanel
         implicitWidth: DS.Style.button.width
         implicitHeight: DS.Style.button.height
         button: control
+        // The normal (non-checked, non-highlighted) text button opts into the
+        // BoxPanel drop shadow, inner shadow and gradient that were dropped
+        // for every consumer in commit 52633cb. Checked buttons use the
+        // smaller 6px radius and render a bottom inner shadow; highlighted
+        // buttons keep their existing flat look.
+        radius: control.highlighted ? DS.Style.control.radius : DS.Style.button.radius
+        enableDropShadow: !(control.checked || control.highlighted)
+        enableInnerShadow: !control.highlighted
+        enableGradient: !(control.checked || control.highlighted)
+        // Crystal dark-mode needs box shadow enabled so the inner bevel
+        // (direct BoxInsetShadow in BoxPanel) renders. State-level gating
+        // (pressed hides the bevel) is handled in BoxPanel, not here.
+        enableBoxShadow: !control.highlighted
+            && (buttonPanel.D.ColorSelector.family === D.Palette.CommonColor
+                || buttonPanel.__crystalDark)
+
+        // Crystal backdrop blur behind the translucent tint produces a
+        // frosted-glass chip. Active in all non-disabled crystal states;
+        // light theme additionally excludes the inactive state.
+        // Mirrors the ToolButton hover blur (radius 15, saturation 1.0,
+        // offscreen itemViewport).
+        readonly property bool __crystalBlur:
+            !control.checked && !control.highlighted
+            && buttonPanel.D.ColorSelector.family === D.Palette.CrystalColor
+            && buttonPanel.D.ColorSelector.controlState !== D.DTK.DisabledState
+            && (D.DTK.themeType === D.ApplicationHelper.DarkType
+                || buttonPanel.D.ColorSelector.controlState !== D.DTK.InactiveState)
+
+        D.InWindowBlur {
+            id: crystalBlur
+            anchors.fill: parent
+            radius: 15
+            saturation: 1.0
+            offscreen: true
+            visible: buttonPanel.__crystalBlur && crystalBlur.valid
+            z: -1
+
+            D.ItemViewport {
+                anchors.fill: parent
+                fixed: true
+                sourceItem: crystalBlur.content
+                radius: buttonPanel.radius
+                hideSource: false
+            }
+        }
     }
 
     contentItem: Item {

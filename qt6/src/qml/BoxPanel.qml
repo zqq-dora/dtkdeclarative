@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 - 2023 UnionTech Software Technology Co., Ltd.
+// SPDX-FileCopyrightText: 2022 - 2026 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
@@ -15,26 +15,106 @@ Item {
     property D.Palette insideBorderColor: DS.Style.button.insideBorder
     property D.Palette outsideBorderColor: DS.Style.button.outsideBorder
     property D.Palette dropShadowColor: DS.Style.button.dropShadow
+    property D.Palette dropShadowColor2: null
     property D.Palette innerShadowColor1: DS.Style.button.innerShadow1
     property D.Palette innerShadowColor2: DS.Style.button.innerShadow2
     property int boxShadowBlur: 6
     property int boxShadowOffsetY: 4
+    property int boxShadowOffsetY2: 0
     property int innerShadowOffsetY1: -1
+    property int innerShadowOffsetY2: 1
+    // Extra height (negative = extend below) for the bottom inner shadow
+    // Loader so it lands on the button edge despite the 1px background
+    // inset. Overridable per consumer if insets differ.
+    property int innerShadowBottomMargin: -1
     // Background color changes with hover state if `backgroundFlowingHovered` is `true`.
     property bool backgroundFlowsHovered: true
     property bool enableBoxShadow: control.D.ColorSelector.family === D.Palette.CommonColor
+    // Shadow and gradient rendering is opt-in. Commit 52633cb temporarily
+    // dropped BoxPanel's drop shadow, inner shadow and gradient for every
+    // consumer, so they stay off by default here. Only the normal text
+    // Button (see Button.qml) turns them on, which keeps the other button
+    // styles and panels looking as they did before.
+    property bool enableDropShadow: false
+    property bool enableInnerShadow: false
+    property bool enableGradient: false
 
-    // TODO drop shadow temporarily.
-    // Loader {
-    //     anchors.fill: backgroundRect
-    //     active: enableBoxShadow
-    //     sourceComponent: BoxShadow {
-    //         shadowBlur: control.boxShadowBlur
-    //         shadowOffsetY: control.boxShadowOffsetY
-    //         shadowColor: control.D.ColorSelector.dropShadowColor
-    //         cornerRadius: backgroundRect.radius
-    //     }
-    // }
+    // Gates the direct BoxInsetShadow inner bevel for crystal dark mode
+    // and excludes crystal dark from the Loader-based common inner shadow path.
+    readonly property bool __crystalDark: control.D.ColorSelector.family === D.Palette.CrystalColor
+        && D.DTK.themeType === D.ApplicationHelper.DarkType
+
+    // Shared visibility for crystal dark inner bevel. Pressed state
+    // shows only the flat background + blur, no inner shadow.
+    readonly property bool __crystalDarkBevel: control.__crystalDark
+        && control.enableBoxShadow
+        && control.enableInnerShadow
+        && control.D.ColorSelector.controlState !== D.DTK.PressedState
+
+    // Hard drop shadows (blur == 0): two rounded Rectangles matching the
+    // border-box, placed below the background and borders in z-order so the
+    // button's own paint naturally covers the overlapping part. Only the
+    // strip extending below the button is visible, with full rounded corners.
+    Rectangle {
+        id: hardShadow
+        visible: control.enableBoxShadow && control.enableDropShadow
+                && control.boxShadowBlur === 0
+                && dropShadowColor && control.D.ColorSelector.dropShadowColor.a > 0
+        y: control.boxShadowOffsetY
+        width: backgroundRect.width
+        height: backgroundRect.height
+        radius: backgroundRect.radius
+        color: control.D.ColorSelector.dropShadowColor
+        antialiasing: false
+    }
+
+    Rectangle {
+        id: hardShadow2
+        visible: control.enableBoxShadow && control.enableDropShadow
+                && control.boxShadowBlur === 0
+                && dropShadowColor2 && control.D.ColorSelector.dropShadowColor2.a > 0
+                && control.boxShadowOffsetY2 > 0
+        y: control.boxShadowOffsetY2
+        width: backgroundRect.width
+        height: backgroundRect.height
+        radius: backgroundRect.radius
+        color: control.D.ColorSelector.dropShadowColor2
+        antialiasing: false
+    }
+
+    // Soft drop shadow (blur > 0): uses BoxShadow for blurred rendering.
+    // Active only when boxShadowBlur is non-zero (e.g. pressed state).
+    Loader {
+        active: control.enableBoxShadow && control.enableDropShadow
+                && control.boxShadowBlur > 0
+                && dropShadowColor && control.D.ColorSelector.dropShadowColor.a > 0
+        anchors.fill: parent
+
+        sourceComponent: BoxShadow {
+            cornerRadius: backgroundRect.radius
+            shadowBlur: control.boxShadowBlur
+            shadowOffsetY: control.boxShadowOffsetY
+            shadowColor: control.D.ColorSelector.dropShadowColor
+        }
+    }
+
+    // Second soft drop shadow layer (blur > 0), using dropShadowColor2
+    // and boxShadowOffsetY2. Mirrors the hardShadow2 rectangle that
+    // renders when blur == 0.
+    Loader {
+        active: control.enableBoxShadow && control.enableDropShadow
+                && control.boxShadowBlur > 0
+                && dropShadowColor2 && control.D.ColorSelector.dropShadowColor2.a > 0
+                && control.boxShadowOffsetY2 > 0
+        anchors.fill: parent
+
+        sourceComponent: BoxShadow {
+            cornerRadius: backgroundRect.radius
+            shadowBlur: control.boxShadowBlur
+            shadowOffsetY: control.boxShadowOffsetY2
+            shadowColor: control.D.ColorSelector.dropShadowColor2
+        }
+    }
 
     Rectangle {
         id: backgroundRect
@@ -52,48 +132,78 @@ Item {
 
         anchors.fill: parent
         radius: control.radius
-        // gradient: D.ColorSelector.color1 === D.ColorSelector.color2 ? null : backgroundGradient
+        gradient: control.enableGradient
+                  && D.ColorSelector.color1 !== D.ColorSelector.color2 ? backgroundGradient : null
         color: D.ColorSelector.color1
     }
 
-    // Loader {
-    //     anchors.fill: backgroundRect
-    //     readonly property color innerShadowColor: control.D.ColorSelector.innerShadowColor1
-    //     active: innerShadowColor1 && innerShadowColor.a !== 0 && control.D.ColorSelector.family === D.Palette.CommonColor
-    //     z: D.DTK.AboveOrder
+    Loader {
+        // Extend 1px below the panel so the bottom inner shadow lands on the
+        // button edge.  The panel is inset 1px (see Button.qml insets), so
+        // without this the shadow sits on the panel bottom, leaving a visible
+        // gap and rendering sub-pixel thin at certain DPR values.
+        anchors.fill: backgroundRect
+        anchors.bottomMargin: control.innerShadowBottomMargin
+        readonly property color innerShadowColor: control.D.ColorSelector.innerShadowColor1
+        active: control.enableBoxShadow && control.enableInnerShadow
+                && !control.__crystalDark
+                && innerShadowColor1 && innerShadowColor.a !== 0
+        z: D.DTK.AboveOrder
 
-    //     sourceComponent: BoxInsetShadow {
-    //         shadowBlur: 2
-    //         shadowOffsetY: control.innerShadowOffsetY1
-    //         spread: 1
-    //         shadowColor: innerShadowColor
-    //         cornerRadius: backgroundRect.radius
-    //     }
-    // }
-
-    // Loader {
-    //     anchors.fill: backgroundRect
-    //     readonly property color innerShadowColor: control.D.ColorSelector.innerShadowColor2
-    //     active: innerShadowColor2 && innerShadowColor.a !== 0 && control.D.ColorSelector.family === D.Palette.CommonColor
-    //     z: D.DTK.AboveOrder
-
-    //     sourceComponent: BoxInsetShadow {
-    //         shadowBlur: 1
-    //         shadowOffsetY: 1
-    //         shadowColor: innerShadowColor
-    //         cornerRadius: backgroundRect.radius
-    //     }
-    // }
+        sourceComponent: BoxInsetShadow {
+            shadowBlur: 1
+            shadowOffsetY: control.innerShadowOffsetY1
+            spread: 0
+            shadowColor: innerShadowColor
+            cornerRadius: backgroundRect.radius
+        }
+    }
 
     Loader {
-        active: insideBorderColor
+        anchors.fill: backgroundRect
+        readonly property color innerShadowColor: control.D.ColorSelector.innerShadowColor2
+        active: control.enableBoxShadow && control.enableInnerShadow
+                && !control.__crystalDark
+                && innerShadowColor2 && innerShadowColor.a !== 0
+        z: D.DTK.AboveOrder
+
+        sourceComponent: BoxInsetShadow {
+            shadowBlur: 1
+            shadowOffsetY: control.innerShadowOffsetY2
+            shadowColor: innerShadowColor
+            cornerRadius: backgroundRect.radius
+        }
+    }
+
+    // Crystal dark inner shadows in a Loader so the shadow items are only
+    // created when the bevel is active. Colors are selected via controlState
+    // (a regular property with proper NOTIFY), not the palette ColorSelector
+    // readonly properties which do not reliably re-evaluate in a Loader on
+    // hover transitions.
+    Loader {
+        active: control.__crystalDarkBevel
         anchors.fill: backgroundRect
         z: D.DTK.AboveOrder
 
-        sourceComponent: InsideBoxBorder {
-            radius: backgroundRect.radius
-            color: control.D.ColorSelector.insideBorderColor
-            borderWidth: DS.Style.control.borderWidth
+        sourceComponent: Item {
+            BoxInsetShadow {
+                anchors.fill: parent
+                cornerRadius: backgroundRect.radius
+                shadowColor: control.D.ColorSelector.controlState === D.DTK.HoveredState
+                             ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(1, 1, 1, 0.05)
+                shadowOffsetX: 0
+                shadowOffsetY: 1
+                shadowBlur: 1
+            }
+            BoxInsetShadow {
+                anchors.fill: parent
+                cornerRadius: backgroundRect.radius
+                shadowColor: control.D.ColorSelector.controlState === D.DTK.HoveredState
+                             ? Qt.rgba(0, 0, 0, 0.5) : Qt.rgba(0, 0, 0, 0.4)
+                shadowOffsetX: 0
+                shadowOffsetY: -1
+                shadowBlur: 1
+            }
         }
     }
 

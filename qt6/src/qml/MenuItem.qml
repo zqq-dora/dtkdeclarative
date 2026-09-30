@@ -26,6 +26,8 @@ T.MenuItem {
     property D.Palette textColor: control.highlighted ? DS.Style.checkedButton.text
                                                       : DS.Style.menu.itemText
     property D.Palette subMenuBackgroundColor: DS.Style.menu.subMenuOpenedBackground
+    property D.Palette menuItemInnerShadow: DS.Style.menu.itemHighlightInnerShadow
+    property D.Palette menuItemInnerShadowTop: DS.Style.menu.itemHighlightInnerShadowTop
 
     palette.windowText: D.ColorSelector.textColor
     D.DciIcon.mode: D.ColorSelector.controlState
@@ -97,6 +99,7 @@ T.MenuItem {
     }
 
     background: Item {
+        id: backgroundItem
         implicitWidth: DS.Style.menu.item.width
         implicitHeight: DS.Style.menu.item.height
         Loader {
@@ -107,6 +110,25 @@ T.MenuItem {
                 innerShadowColor: null
                 radius: DS.Style.menu.item.radius
             }
+        }
+        // 1px top inset highlight — white 10%, follows rounded corners.
+        BoxInsetShadow {
+            anchors.fill: parent
+            visible: control.highlighted
+            shadowColor: control.D.ColorSelector.menuItemInnerShadowTop
+            shadowOffsetY: 1
+            shadowBlur: 1
+            cornerRadius: DS.Style.menu.item.radius
+        }
+
+        // 1px bottom inset shadow — black 20% (light) / 24% (dark).
+        BoxInsetShadow {
+            anchors.fill: parent
+            visible: control.highlighted
+            shadowColor: control.D.ColorSelector.menuItemInnerShadow
+            shadowOffsetY: -1
+            shadowBlur: 1
+            cornerRadius: DS.Style.menu.item.radius
         }
     }
 }
